@@ -3,6 +3,7 @@ package lupercalia
 import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
+	auth "github.com/cosmos/cosmos-sdk/x/auth/types"
 	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
 	upgradetypes "github.com/cosmos/cosmos-sdk/x/upgrade/types"
 
@@ -14,9 +15,8 @@ var addressesToBeAdjusted = []string{
 }
 
 //BurnCoinFromAccount undelegate all amount in adjsuted address (bypass 28 day unbonding), and send it to dead address
-func BurnCoinFromAccount(ctx sdk.Context, accAddr sdk.AccAddress, staking *stakingkeeper.Keeper, bank *bankkeeper.BaseKeeper) {
+func BurnCoinFromAccount(ctx sdk.Context, accAddr sdk.AccAddress, staking *stakingkeeper.Keeper, bank *bankkeeper.BaseKeeper, incinerator *auth.ModuleAccount) {
 	bondDenom := staking.BondDenom(ctx)
-
 	now := ctx.BlockHeader().Time
 
 	// this loop will complete all delegator's active redelegations
@@ -72,8 +72,12 @@ func BurnCoinFromAccount(ctx sdk.Context, accAddr sdk.AccAddress, staking *staki
 	accCoin := bank.GetBalance(ctx, accAddr, bondDenom)
 
 	//get dead address account and send coin to this address
-	destAcc, _ := sdk.AccAddressFromHex("0000000000000000000000000000000000000000")
-	err := bank.SendCoins(ctx, accAddr, destAcc, sdk.NewCoins(accCoin))
+	err := bank.SendCoinsFromAccountToModule(ctx, accAddr, "incinerator", sdk.NewCoins(accCoin))
+	if err != nil {
+		panic(err)
+	}
+
+	err = bank.BurnCoins(ctx, "incinerator", sdk.NewCoins(accCoin))
 	if err != nil {
 		panic(err)
 	}
@@ -82,9 +86,12 @@ func BurnCoinFromAccount(ctx sdk.Context, accAddr sdk.AccAddress, staking *staki
 //CreateUpgradeHandler make upgrade handler
 func CreateUpgradeHandler(mm *module.Manager, configurator module.Configurator, staking *stakingkeeper.Keeper, bank *bankkeeper.BaseKeeper) upgradetypes.UpgradeHandler {
 	return func(ctx sdk.Context, plan upgradetypes.Plan, vm module.VersionMap) (module.VersionMap, error) {
+		
+		incinerator := auth.NewEmptyModuleAccount("incinerator", auth.Burner)
+
 		for _, addrString := range addressesToBeAdjusted {
 			accAddr, _ := sdk.AccAddressFromBech32(addrString)
-			BurnCoinFromAccount(ctx, accAddr, staking, bank)
+			BurnCoinFromAccount(ctx, accAddr, staking, bank, incinerator)
 		}
 		// force an update of validator min commission
 		// we already did this for moneta

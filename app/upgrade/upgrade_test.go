@@ -89,9 +89,10 @@ func (suite *UpgradeTestSuite) TestAdjustFunds() {
 
 				// unbond the accAddr delegations, send all the unbonding and unbonded tokens to the community pool
 				bankBaseKeeper, _ := suite.app.BankKeeper.(bankkeeper.BaseKeeper)
+				incinerator := suite.app.AccountKeeper.NewEmptyModuleAccount("incinerator", authtypes.Burner)
 
 				// move all juno from acc to community pool (uncluding bonded juno)
-				lupercalia.BurnCoinFromAccount(suite.ctx, addr2, &suite.app.StakingKeeper, &bankBaseKeeper)
+				lupercalia.BurnCoinFromAccount(suite.ctx, addr2, &suite.app.StakingKeeper, &bankBaseKeeper, incinerator)
 
 				suite.app.EndBlock(abci.RequestEndBlock{})
 				suite.app.Commit()
